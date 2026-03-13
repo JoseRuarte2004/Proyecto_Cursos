@@ -1,0 +1,288 @@
+services:
+  - type: web
+    name: backend-gateway
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./infra/nginx/Dockerfile.render
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: FRONT_ORIGIN
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: SECURITY_TXT_CONTACT
+        sync: false
+      - key: SECURITY_TXT_EXPIRES
+        value: 2027-12-31T23:59:59Z
+      - key: SECURITY_TXT_LANGUAGES
+        value: es, en
+      - key: SECURITY_TXT_CANONICAL
+        sync: false
+      - key: USERS_API_UPSTREAM
+        value: http://users-api:8081
+      - key: COURSES_API_UPSTREAM
+        value: http://courses-api:8082
+      - key: CONTENT_API_UPSTREAM
+        value: http://course-content-api:8083
+      - key: ENROLLMENTS_API_UPSTREAM
+        value: http://enrollments-api:8084
+      - key: PAYMENTS_API_UPSTREAM
+        value: http://payments-api:8085
+      - key: CHAT_API_UPSTREAM
+        value: http://chat-api:8090
+
+  - type: pserv
+    name: platform-redis
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./infra/redis/Dockerfile.render
+    disk:
+      name: redis-data
+      mountPath: /data
+      sizeGB: 5
+
+  - type: pserv
+    name: platform-rabbitmq
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./infra/rabbitmq/Dockerfile.render
+    disk:
+      name: rabbitmq-data
+      mountPath: /var/lib/rabbitmq
+      sizeGB: 10
+    envVars:
+      - key: RABBITMQ_DEFAULT_USER
+        sync: false
+      - key: RABBITMQ_DEFAULT_PASS
+        sync: false
+
+  - type: pserv
+    name: users-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/users-api/Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: USERS_API_ADDR
+        value: :8081
+      - key: USERS_API_DATABASE_URL
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: USERS_API_REDIS_URL
+        value: redis://platform-redis:6379/0
+      - key: USERS_API_JWT_SECRET
+        sync: false
+      - key: USERS_API_JWT_TTL
+        value: 24h
+      - key: USERS_INTERNAL_TOKEN
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: TOKEN_EMAIL_VERIFY_TTL_HOURS
+        value: 24
+      - key: TOKEN_PASSWORD_RESET_TTL_MINUTES
+        value: 60
+      - key: REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN
+        value: "false"
+      - key: USERS_API_BOOTSTRAP_ADMIN_NAME
+        sync: false
+      - key: USERS_API_BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: USERS_API_BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+
+  - type: pserv
+    name: courses-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/courses-api/Dockerfile
+    envVars:
+      - key: COURSES_API_ADDR
+        value: :8082
+      - key: COURSES_DB_DSN
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: COURSES_REDIS_ADDR
+        value: redis://platform-redis:6379/1
+      - key: USERS_API_BASE_URL
+        value: http://users-api:8081
+      - key: USERS_INTERNAL_TOKEN
+        sync: false
+      - key: ENROLLMENTS_API_BASE_URL
+        value: http://enrollments-api:8084
+      - key: ENROLL_INTERNAL_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1
+      - key: JWT_SECRET
+        sync: false
+      - key: COURSES_INTERNAL_TOKEN
+        sync: false
+      - key: COURSES_CACHE_TTL
+        value: 5m
+
+  - type: pserv
+    name: course-content-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/course-content-api/Dockerfile
+    envVars:
+      - key: COURSE_CONTENT_API_ADDR
+        value: :8083
+      - key: CONTENT_DB_DSN
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: COURSES_API_BASE_URL
+        value: http://courses-api:8082
+      - key: ENROLLMENTS_API_BASE_URL
+        value: http://enrollments-api:8084
+      - key: COURSES_INTERNAL_TOKEN
+        sync: false
+      - key: ENROLL_INTERNAL_TOKEN
+        sync: false
+      - key: CONTENT_INTERNAL_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+
+  - type: pserv
+    name: enrollments-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/enrollments-api/Dockerfile
+    envVars:
+      - key: ENROLLMENTS_API_ADDR
+        value: :8084
+      - key: ENROLLMENTS_DB_DSN
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: COURSES_API_BASE_URL
+        value: http://courses-api:8082
+      - key: COURSES_INTERNAL_TOKEN
+        sync: false
+      - key: USERS_API_BASE_URL
+        value: http://users-api:8081
+      - key: USERS_INTERNAL_TOKEN
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+      - key: ENROLLMENTS_SERVICE_NAME
+        value: enrollments-api
+      - key: ENROLLMENTS_INTERNAL_TOKEN
+        sync: false
+      - key: ENROLL_INTERNAL_TOKEN
+        sync: false
+
+  - type: pserv
+    name: payments-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/payments-api/Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PAYMENTS_API_ADDR
+        value: :8085
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: PAYMENTS_DB_DSN
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+      - key: ENROLLMENTS_API_BASE_URL
+        value: http://enrollments-api:8084
+      - key: ENROLL_INTERNAL_TOKEN
+        sync: false
+      - key: COURSES_API_BASE_URL
+        value: http://courses-api:8082
+      - key: COURSES_INTERNAL_TOKEN
+        sync: false
+      - key: MERCADOPAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADOPAGO_CHECKOUT_ENV
+        value: production
+      - key: PAYMENTS_SERVICE_NAME
+        value: payments-api
+      - key: PAYMENTS_INTERNAL_TOKEN
+        sync: false
+
+  - type: pserv
+    name: chat-api
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./services/chat-api/Dockerfile
+    envVars:
+      - key: CHAT_API_ADDR
+        value: :8090
+      - key: CHAT_DB_DSN
+        fromDatabase:
+          name: platform-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: USERS_API_BASE_URL
+        value: http://users-api:8081
+      - key: COURSES_API_BASE_URL
+        value: http://courses-api:8082
+      - key: ENROLLMENTS_API_BASE_URL
+        value: http://enrollments-api:8084
+      - key: USERS_INTERNAL_TOKEN
+        sync: false
+      - key: COURSES_INTERNAL_TOKEN
+        sync: false
+      - key: ENROLL_INTERNAL_TOKEN
+        sync: false
+      - key: CHAT_INTERNAL_TOKEN
+        sync: false
+      - key: CHAT_FANOUT_MODE
+        value: memory
+      - key: CHAT_ALLOWED_ORIGINS
+        sync: false
+      - key: REDIS_ADDR
+        value: redis://platform-redis:6379/2
+      - key: RABBITMQ_URL
+        sync: false
+
+databases:
+  - name: platform-postgres
+    databaseName: platform
+    user: platform

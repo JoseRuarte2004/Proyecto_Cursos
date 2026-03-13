@@ -1,0 +1,11 @@
+FROM nginx:1.27-alpine
+
+RUN apk add --no-cache gettext
+
+COPY infra/nginx/nginx.render.conf.template /etc/nginx/templates/nginx.render.conf.template
+COPY infra/nginx/security.txt.template /etc/nginx/templates/security.txt.template
+COPY infra/nginx/render-entrypoint.sh /usr/local/bin/render-nginx-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/render-nginx-entrypoint.sh
+
+CMD ["/usr/local/bin/render-nginx-entrypoint.sh"]

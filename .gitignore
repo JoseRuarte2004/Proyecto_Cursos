@@ -1,5 +1,7 @@
 .env
 .env.local
+.env.production.local
+.env.staging.local
 !.env.example
 frontend/node_modules/
 frontend/dist/
@@ -15,3 +17,10 @@ tmpx.txt
 *.dump
 *.sql.gz
 *.bak
+.vercel/
+.render/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
