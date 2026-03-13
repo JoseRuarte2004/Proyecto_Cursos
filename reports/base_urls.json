@@ -1,0 +1,9 @@
+{
+  "users": "http://localhost:8081",
+  "courses": "http://localhost:8082",
+  "content": "http://localhost:8083",
+  "enrollments": "http://localhost:8084",
+  "payments": "http://localhost:8085",
+  "chat": "http://localhost:8090",
+  "nginx": "http://localhost:8080"
+}

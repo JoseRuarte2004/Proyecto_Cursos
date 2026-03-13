@@ -1,0 +1,206 @@
+events {}
+
+http {
+  include       /etc/nginx/mime.types;
+  default_type  application/octet-stream;
+  server_tokens off;
+
+  sendfile on;
+  keepalive_timeout 65;
+  resolver 127.0.0.11 ipv6=off valid=10s;
+
+  map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+  }
+
+  map $http_origin $cors_origin {
+    default "";
+    "${FRONT_ORIGIN}" $http_origin;
+  }
+
+  server {
+    listen 80;
+    server_name _;
+    proxy_hide_header X-Powered-By;
+
+    add_header Access-Control-Allow-Origin $cors_origin always;
+    add_header Access-Control-Allow-Methods "GET,POST,PATCH,PUT,DELETE,OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization,Content-Type,X-Request-Id" always;
+    add_header Access-Control-Expose-Headers "X-Request-Id" always;
+    add_header Vary "Origin" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), serial=(), usb=(), xr-spatial-tracking=(), browsing-topics=()" always;
+    ${HSTS_DIRECTIVE}
+    # In dev the policy is report-only to preserve local compatibility; staging/prod enforce it.
+    add_header ${CSP_HEADER_NAME} "${CSP_VALUE}" always;
+
+    if ($request_method = OPTIONS) {
+      return 204;
+    }
+
+    location = /health {
+      default_type application/json;
+      return 200 '{"status":"ok"}';
+    }
+
+    location = /.well-known/security.txt {
+      default_type text/plain;
+      alias /etc/nginx/generated/security.txt;
+    }
+
+    location /api/users/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $users_api_host users-api:8081;
+      rewrite ^/api/users/(.*)$ /$1 break;
+      proxy_pass http://$users_api_host$uri$is_args$args;
+    }
+
+    location /auth/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $users_api_host users-api:8081;
+      proxy_pass http://$users_api_host$uri$is_args$args;
+    }
+
+    location /api/courses/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $courses_api_host courses-api:8082;
+      rewrite ^/api/courses/(.*)$ /$1 break;
+      proxy_pass http://$courses_api_host$uri$is_args$args;
+    }
+
+    location /api/content/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $course_content_api_host course-content-api:8083;
+      rewrite ^/api/content/(.*)$ /$1 break;
+      proxy_pass http://$course_content_api_host$uri$is_args$args;
+    }
+
+    location /api/enrollments/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $enrollments_api_host enrollments-api:8084;
+      rewrite ^/api/enrollments/(.*)$ /$1 break;
+      proxy_pass http://$enrollments_api_host$uri$is_args$args;
+    }
+
+    location /api/payments/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $payments_api_host payments-api:8085;
+      rewrite ^/api/payments/(.*)$ /$1 break;
+      proxy_pass http://$payments_api_host$uri$is_args$args;
+    }
+
+    location /api/chat/ {
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      proxy_read_timeout 3600s;
+      set $chat_api_host chat-api:8090;
+      rewrite ^/api/chat/(.*)$ /$1 break;
+      proxy_pass http://$chat_api_host$uri$is_args$args;
+    }
+
+    location /users/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $users_api_host users-api:8081;
+      rewrite ^/users/(.*)$ /$1 break;
+      proxy_pass http://$users_api_host$uri$is_args$args;
+    }
+
+    location /courses/ {
+      root /usr/share/nginx/html/dist;
+
+      if ($http_accept ~* "text/html") {
+        rewrite ^ /index.html break;
+      }
+
+      try_files $uri @courses_api_legacy;
+    }
+
+    location /course-content/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $course_content_api_host course-content-api:8083;
+      rewrite ^/course-content/(.*)$ /$1 break;
+      proxy_pass http://$course_content_api_host$uri$is_args$args;
+    }
+
+    location /enrollments/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $enrollments_api_host enrollments-api:8084;
+      rewrite ^/enrollments/(.*)$ /$1 break;
+      proxy_pass http://$enrollments_api_host$uri$is_args$args;
+    }
+
+    location /payments/ {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $payments_api_host payments-api:8085;
+      rewrite ^/payments/(.*)$ /$1 break;
+      proxy_pass http://$payments_api_host$uri$is_args$args;
+    }
+
+    location /chat/ {
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      proxy_read_timeout 3600s;
+      set $chat_api_host chat-api:8090;
+      rewrite ^/chat/(.*)$ /$1 break;
+      proxy_pass http://$chat_api_host$uri$is_args$args;
+    }
+
+    location @courses_api_legacy {
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Request-Id $http_x_request_id;
+      set $courses_api_host courses-api:8082;
+      rewrite ^/courses/(.*)$ /$1 break;
+      proxy_pass http://$courses_api_host$uri$is_args$args;
+    }
+
+    location / {
+      root /usr/share/nginx/html/dist;
+      try_files $uri $uri/ /index.html;
+    }
+  }
+}

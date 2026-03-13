@@ -1,0 +1,17 @@
+.env
+.env.local
+!.env.example
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+frontend/tsconfig.node.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+localtunnel.log
+ngrok.log
+tmpx.txt
+.env.*.local
+*.log
+*.dump
+*.sql.gz
+*.bak

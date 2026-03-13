@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.local
+bin
+dist
+tmp
+node_modules
+**/node_modules
+frontend/dist
+**/dist
+coverage.out
+*.log
+*.tmp

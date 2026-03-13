@@ -1,0 +1,13 @@
+OK infra/docker-compose.yml
+OK infra/nginx
+OK services/users-api
+OK services/courses-api
+OK services/course-content-api
+OK services/enrollments-api
+OK services/payments-api
+OK services/chat-api
+OK scripts/verify.ps1
+OK scripts/verify.sh
+OK Makefile
+OK .env.example
+OK shared /health /ready

@@ -1,0 +1,4 @@
+Contact: ${SECURITY_TXT_CONTACT}
+Expires: ${SECURITY_TXT_EXPIRES}
+Preferred-Languages: ${SECURITY_TXT_LANGUAGES}
+Canonical: ${SECURITY_TXT_CANONICAL}

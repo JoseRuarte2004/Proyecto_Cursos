@@ -1,0 +1,376 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-platform_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-platform_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: platform-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: platform-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8025/api/v2/messages >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  users-api:
+    build:
+      context: ..
+      dockerfile: services/users-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      USERS_API_ADDR: ":8081"
+      USERS_API_DATABASE_URL: ${USERS_API_DATABASE_URL:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      USERS_API_REDIS_URL: ${USERS_API_REDIS_URL:-redis://redis:6379/0}
+      USERS_API_JWT_SECRET: ${JWT_SECRET:-change-me}
+      USERS_API_JWT_TTL: ${USERS_API_JWT_TTL:-24h}
+      USERS_INTERNAL_TOKEN: ${USERS_INTERNAL_TOKEN:-internal-users}
+      APP_ENV: ${APP_ENV:-dev}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      EMAIL_FROM: ${EMAIL_FROM:-no-reply@example.com}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@example.com}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      TOKEN_EMAIL_VERIFY_TTL_HOURS: ${TOKEN_EMAIL_VERIFY_TTL_HOURS:-24}
+      TOKEN_PASSWORD_RESET_TTL_MINUTES: ${TOKEN_PASSWORD_RESET_TTL_MINUTES:-60}
+      REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN: ${REQUIRE_EMAIL_VERIFICATION_FOR_LOGIN:-false}
+      USERS_API_BOOTSTRAP_ADMIN_NAME: ${USERS_API_BOOTSTRAP_ADMIN_NAME:-Platform Admin}
+      USERS_API_BOOTSTRAP_ADMIN_EMAIL: ${USERS_API_BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      USERS_API_BOOTSTRAP_ADMIN_PASSWORD: ${USERS_API_BOOTSTRAP_ADMIN_PASSWORD:-admin1234}
+    ports:
+      - "${USERS_API_PORT:-8081}:8081"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8081/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  courses-api:
+    build:
+      context: ..
+      dockerfile: services/courses-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      users-api:
+        condition: service_healthy
+    environment:
+      COURSES_API_ADDR: ":8082"
+      COURSES_DB_DSN: ${COURSES_DB_DSN:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      COURSES_REDIS_ADDR: ${COURSES_REDIS_ADDR:-redis://redis:6379/1}
+      USERS_API_BASE_URL: ${USERS_API_BASE_URL:-http://users-api:8081}
+      USERS_INTERNAL_TOKEN: ${USERS_INTERNAL_TOKEN:-internal-users}
+      ENROLLMENTS_API_BASE_URL: ${ENROLLMENTS_API_BASE_URL:-http://enrollments-api:8084}
+      ENROLL_INTERNAL_TOKEN: ${ENROLL_INTERNAL_TOKEN:-internal-enrollments}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      COURSES_INTERNAL_TOKEN: ${COURSES_INTERNAL_TOKEN:-internal-courses}
+      COURSES_CACHE_TTL: ${COURSES_CACHE_TTL:-5m}
+    ports:
+      - "${COURSES_API_PORT:-8082}:8082"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8082/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  course-content-api:
+    build:
+      context: ..
+      dockerfile: services/course-content-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      courses-api:
+        condition: service_healthy
+      enrollments-api:
+        condition: service_healthy
+    environment:
+      COURSE_CONTENT_API_ADDR: ":8083"
+      CONTENT_DB_DSN: ${CONTENT_DB_DSN:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      COURSES_API_BASE_URL: ${COURSES_API_BASE_URL:-http://courses-api:8082}
+      ENROLLMENTS_API_BASE_URL: ${ENROLLMENTS_API_BASE_URL:-http://enrollments-api:8084}
+      COURSES_INTERNAL_TOKEN: ${COURSES_INTERNAL_TOKEN:-internal-courses}
+      ENROLL_INTERNAL_TOKEN: ${ENROLL_INTERNAL_TOKEN:-internal-enrollments}
+      CONTENT_INTERNAL_TOKEN: ${CONTENT_INTERNAL_TOKEN:-internal-content}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+    ports:
+      - "${COURSE_CONTENT_API_PORT:-8083}:8083"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8083/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  enrollments-api:
+    build:
+      context: ..
+      dockerfile: services/enrollments-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      courses-api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ENROLLMENTS_API_ADDR: ":8084"
+      ENROLLMENTS_DB_DSN: ${ENROLLMENTS_DB_DSN:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      COURSES_API_BASE_URL: ${COURSES_API_BASE_URL:-http://courses-api:8082}
+      COURSES_INTERNAL_TOKEN: ${COURSES_INTERNAL_TOKEN:-internal-courses}
+      USERS_API_BASE_URL: ${USERS_API_BASE_URL:-http://users-api:8081}
+      USERS_INTERNAL_TOKEN: ${USERS_INTERNAL_TOKEN:-internal-users}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      ENROLLMENTS_SERVICE_NAME: "enrollments-api"
+      ENROLLMENTS_INTERNAL_TOKEN: ${ENROLLMENTS_INTERNAL_TOKEN:-internal-enrollments}
+      ENROLL_INTERNAL_TOKEN: ${ENROLL_INTERNAL_TOKEN:-internal-enrollments}
+    ports:
+      - "${ENROLLMENTS_API_PORT:-8084}:8084"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8084/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  payments-api:
+    build:
+      context: ..
+      dockerfile: services/payments-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      courses-api:
+        condition: service_healthy
+      enrollments-api:
+        condition: service_healthy
+    environment:
+      PAYMENTS_API_ADDR: ":8085"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-${PUBLIC_BASE_URL:-http://localhost:8080}}
+      PAYMENTS_DB_DSN: ${PAYMENTS_DB_DSN:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      ENROLLMENTS_API_BASE_URL: ${ENROLLMENTS_API_BASE_URL:-http://enrollments-api:8084}
+      ENROLL_INTERNAL_TOKEN: ${ENROLL_INTERNAL_TOKEN:-internal-enrollments}
+      COURSES_API_BASE_URL: ${COURSES_API_BASE_URL:-http://courses-api:8082}
+      COURSES_INTERNAL_TOKEN: ${COURSES_INTERNAL_TOKEN:-internal-courses}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MERCADOPAGO_WEBHOOK_SECRET: ${MERCADOPAGO_WEBHOOK_SECRET:-}
+      MERCADOPAGO_CHECKOUT_ENV: ${MERCADOPAGO_CHECKOUT_ENV:-production}
+      WEBHOOK_SECRET_MERCADOPAGO: ${WEBHOOK_SECRET_MERCADOPAGO:-}
+      WEBHOOK_SECRET_STRIPE: ${WEBHOOK_SECRET_STRIPE:-}
+      PAYMENTS_SERVICE_NAME: "payments-api"
+      PAYMENTS_INTERNAL_TOKEN: ${PAYMENTS_INTERNAL_TOKEN:-internal-payments}
+    ports:
+      - "${PAYMENTS_API_PORT:-8085}:8085"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8085/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  chat-api:
+    build:
+      context: ..
+      dockerfile: services/chat-api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      courses-api:
+        condition: service_healthy
+      enrollments-api:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: "chat-api"
+      CHAT_API_ADDR: ":8090"
+      CHAT_DB_DSN: ${CHAT_DB_DSN:-postgres://postgres:postgres@postgres:5432/platform_dev?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      APP_ENV: ${APP_ENV:-dev}
+      USERS_API_BASE_URL: ${USERS_API_BASE_URL:-http://users-api:8081}
+      COURSES_API_BASE_URL: ${COURSES_API_BASE_URL:-http://courses-api:8082}
+      ENROLLMENTS_API_BASE_URL: ${ENROLLMENTS_API_BASE_URL:-http://enrollments-api:8084}
+      USERS_INTERNAL_TOKEN: ${USERS_INTERNAL_TOKEN:-internal-users}
+      COURSES_INTERNAL_TOKEN: ${COURSES_INTERNAL_TOKEN:-internal-courses}
+      ENROLL_INTERNAL_TOKEN: ${ENROLL_INTERNAL_TOKEN:-internal-enrollments}
+      CHAT_INTERNAL_TOKEN: ${CHAT_INTERNAL_TOKEN:-internal-chat}
+      CHAT_FANOUT_MODE: ${CHAT_FANOUT_MODE:-memory}
+      CHAT_ALLOWED_ORIGINS: ${CHAT_ALLOWED_ORIGINS:-}
+      REDIS_ADDR: ${REDIS_ADDR:-redis://redis:6379/2}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    ports:
+      - "${CHAT_API_PORT:-8090}:8090"
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8090/ready >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: platform-nginx
+    restart: unless-stopped
+    depends_on:
+      users-api:
+        condition: service_healthy
+      courses-api:
+        condition: service_healthy
+      course-content-api:
+        condition: service_healthy
+      enrollments-api:
+        condition: service_healthy
+      payments-api:
+        condition: service_healthy
+      chat-api:
+        condition: service_healthy
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    environment:
+      FRONT_ORIGIN: ${FRONT_ORIGIN:-http://localhost:5173}
+      APP_ENV: ${APP_ENV:-dev}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      SECURITY_TXT_CONTACT: ${SECURITY_TXT_CONTACT:-mailto:security@replace-me.invalid}
+      SECURITY_TXT_EXPIRES: ${SECURITY_TXT_EXPIRES:-2027-12-31T23:59:59Z}
+      SECURITY_TXT_LANGUAGES: ${SECURITY_TXT_LANGUAGES:-es, en}
+      SECURITY_TXT_CANONICAL: ${SECURITY_TXT_CANONICAL:-${PUBLIC_BASE_URL:-http://localhost:8080}/.well-known/security.txt}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /etc/nginx/generated
+        CSP_VALUE="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; connect-src 'self' ws://\$$host wss://\$$host; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; media-src 'self' data: blob: https:; frame-src 'self' https://www.youtube.com https://player.vimeo.com; manifest-src 'self';"
+        CSP_HEADER_NAME="Content-Security-Policy"
+        if [ "${APP_ENV:-dev}" = "dev" ]; then
+          CSP_HEADER_NAME="Content-Security-Policy-Report-Only"
+        fi
+        HSTS_DIRECTIVE="# HSTS disabled for non-HTTPS or local development environments"
+        if [ "${APP_ENV:-dev}" != "dev" ] && printf '%s' "${PUBLIC_BASE_URL:-}" | grep -Eq '^https://'; then
+          HSTS_DIRECTIVE='add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;'
+        fi
+        export CSP_VALUE CSP_HEADER_NAME HSTS_DIRECTIVE FRONT_ORIGIN SECURITY_TXT_CONTACT SECURITY_TXT_EXPIRES SECURITY_TXT_LANGUAGES SECURITY_TXT_CANONICAL
+        envsubst '$$FRONT_ORIGIN $$CSP_HEADER_NAME $$CSP_VALUE $$HSTS_DIRECTIVE' < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf
+        envsubst '$$SECURITY_TXT_CONTACT $$SECURITY_TXT_EXPIRES $$SECURITY_TXT_LANGUAGES $$SECURITY_TXT_CANONICAL' < /etc/nginx/templates/security.txt.template > /etc/nginx/generated/security.txt
+        nginx -g 'daemon off;'
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ./nginx/security.txt.template:/etc/nginx/templates/security.txt.template:ro
+      - ../frontend:/usr/share/nginx/html:ro
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  platform-network:
+    driver: bridge
